@@ -1,0 +1,59 @@
+name: Atualizar BI Hub Tráfego Pago
+
+# Horários em UTC (GitHub Actions sempre usa UTC). Brasília = UTC-3.
+# Mesmo padrão do BI Hub Decoração: duas execuções automáticas por dia +
+# botão "Atualizar agora" no painel (via Cloudflare Worker bi-trigger-trafego).
+#  0  11  -> 08:00 BRT  (versão de abertura do dia)
+#  59 2   -> 23:59 BRT  (versão de fechamento do dia)
+on:
+  schedule:
+    - cron: "0 11 * * *"
+    - cron: "59 2 * * *"
+  workflow_dispatch: {}   # disparado pelo botão "Atualizar agora" do painel (e manualmente, se preciso)
+
+permissions:
+  contents: write          # necessário para commitar o index.html atualizado
+
+concurrency:
+  group: refresh-bi
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout do repositório
+        uses: actions/checkout@v4
+
+      - name: Configurar Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Gerar index.html (puxa Windsor.ai e reconstrói o painel)
+        env:
+          WINDSOR_API_KEY: ${{ secrets.WINDSOR_API_KEY }}
+        run: python build_cloud.py
+
+      - name: Publicar (commit do index.html, se mudou)
+        run: |
+          git config user.name  "bi-bot"
+          git config user.email "bi-bot@users.noreply.github.com"
+          git add index.html
+          if git diff --staged --quiet; then
+            echo "Sem mudanças no index.html — nada a publicar."
+            exit 0
+          fi
+          git commit -m "Atualização automática do BI ($(TZ='America/Sao_Paulo' date '+%d/%m/%Y %H:%M') BRT)"
+          # Proteção contra corrida de commits: pull --rebase e retry com backoff.
+          for i in 1 2 3 4 5; do
+            git fetch origin main
+            if git pull --rebase origin main && git push; then
+              echo "Publicado com sucesso na tentativa $i."
+              exit 0
+            fi
+            echo "Tentativa $i falhou (push rejeitado). Aguardando 5s e tentando de novo..."
+            sleep 5
+          done
+          echo "Falha ao publicar após 5 tentativas."
+          exit 1
