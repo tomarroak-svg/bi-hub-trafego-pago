@@ -43,12 +43,39 @@ END    = datetime.now(BRT).date()
 ENDS   = END.isoformat()
 
 # ---- mapeamentos (iguais à versão validada) ----
-SITE_FB={'383182840215364':'Moderna','990772362573645':'Moderna','175769079':'DePoster','867793234181618':'DePoster','1413252628867222':'Empório','958957112622663':'Empório'}
-SITE_GADS={'423-641-1454':'Moderna','402-184-9198':'DePoster','135-806-4700':'DePoster','543-984-2956':'Empório'}
-SITE_GA4={'363632980':'Moderna','286274006':'DePoster','358759049':'Empório'}
+# Sites PRÓPRIOS (aparecem em P1, P5 e P6) + empresas PARCEIRAS (aparecem SÓ em P5/P6,
+# nunca na P1 — decisão do Rafael: parceiros não podem consolidar com sites próprios).
+SITE_FB={'383182840215364':'Moderna','990772362573645':'Moderna','175769079':'DePoster','867793234181618':'DePoster','1413252628867222':'Empório','958957112622663':'Empório',
+         # parceiros (Meta Ads)
+         '324593358846160':'Mondessin','1154532475018030':'Coor','329992743452082':'Bruna Baldone','1008952206460036':_nfc('Estúdio Baru')}
+# Google Ads: Windsor devolve o customer id com hífens (XXX-XXX-XXXX). Cadastro os dois
+# formatos (com e sem hífen) por segurança, pois não dá pra validar o formato exato sem a chave.
+SITE_GADS={'423-641-1454':'Moderna','402-184-9198':'DePoster','135-806-4700':'DePoster','543-984-2956':'Empório',
+           # parceiros com Google Ads (Bruna Baldone e Estúdio Baru NÃO têm conta Google Ads)
+           '505-083-9339':'Mondessin','5050839339':'Mondessin','564-082-3041':'Coor','5640823041':'Coor'}
+SITE_GA4={'363632980':'Moderna','286274006':'DePoster','358759049':'Empório',
+          # parceiros (GA4)
+          '352420460':'Mondessin','396666896':'Coor','430724112':'Bruna Baldone','302059339':_nfc('Estúdio Baru')}
 PREFIX={'MDR':'Moderna','DEP':'DePoster','EMP':'Empório'}
 META_FROM=date(2026,1,1); META=1.1215
 OWN={'MDR','EMP','DEP'}
+
+# ---- empresas PARCEIRAS (P5/P6 apenas) ----
+PARTNER_SITES=['Mondessin','Coor','Bruna Baldone',_nfc('Estúdio Baru')]
+# Empresas SEM conta Google Ads → front-end mostra aviso na tabela de Campanhas Google
+# e o canal Google entra como zero nos indicadores do topo (custoGoogle já fica 0 por não
+# estar em SITE_GADS).
+NO_GOOGLE_ADS=['Bruna Baldone',_nfc('Estúdio Baru')]
+# Faturamento Sisarte: parceiros são identificados pela COLUNA 'parceiro' (não pelo prefixo
+# do número do pedido, como os sites próprios). Chaves normalizadas p/ NFC minúsculo.
+PARTNER_FAT={_nfc(k):v for k,v in {
+    'marina mondessin':'Mondessin',
+    'coor':'Coor',
+    'bruna baldone | arte em quadros':'Bruna Baldone',
+    'estúdio baru':_nfc('Estúdio Baru'),
+}.items()}
+# BASE BI PRODUÇÃO E CUSTOS FÁBRICA (col AF PARCEIRO): código completo do parceiro.
+PARTNER_PROD={'MON':'Mondessin','COOR':'Coor','BBALD':'Bruna Baldone','BARU':_nfc('Estúdio Baru')}
 
 # contas googlesheets (Windsor account_id = id_da_planilha + sufixo)
 SHEET_FATURAMENTO="1N8o99FbyhWn70mqEDad_S_AI_Lzjynv-0rzxoc0eWOI-1289411442"
@@ -133,6 +160,9 @@ for r in fat:
     st=r.get('status')
     if st is not None and str(st).strip()!='' and str(st).strip().upper()!='PAGO': continue
     s=PREFIX.get(str(no).split('.')[0])
+    if not s:
+        # empresas PARCEIRAS: identificadas pela coluna 'parceiro' (não têm prefixo MDR/DEP/EMP)
+        s=PARTNER_FAT.get(_nfc(str(r.get('parceiro') or '')).strip().lower())
     if not s: continue
     d=pdate(dt)
     if not d: continue
@@ -168,8 +198,13 @@ SITE_IG = {
     '17841450821474791': 'Moderna',
     '17841402125563401': 'DePoster',
     '17841418118323735': 'Empório',
+    # parceiros (Instagram)
+    '17841440336824405': 'Mondessin',
+    '17841406023923194': 'Coor',
+    '17841452639482858': 'Bruna Baldone',
+    '17841450666776212': _nfc('Estúdio Baru'),
 }
-P5_SITES = ['Moderna', 'DePoster', 'Empório']
+P5_SITES = ['Moderna', 'DePoster', 'Empório'] + PARTNER_SITES
 
 # --- séries diárias por site: custo Meta e Google SEPARADOS (p/ tabela diária e KPIs) ---
 p5_custoMeta   = defaultdict(lambda: defaultdict(float))
@@ -445,7 +480,7 @@ print("  [P5][DBG] ig.daily linhas: " + ", ".join(f"{s}={len(instagram[s]['daily
 p5 = dict(
     meta = dict(updated_at=NOW, start=START.isoformat(), end=ENDS,
                 metaTax=META, metaTaxFrom=META_FROM.isoformat(),
-                sites=P5_SITES, campFrom=P5_CAMP_FROM, adFrom=P5_AD_FROM,
+                sites=P5_SITES, noGoogleAds=NO_GOOGLE_ADS, campFrom=P5_CAMP_FROM, adFrom=P5_AD_FROM,
                 pageViewField=PV, demoFields=[d[0] for d in DEMO_FIELDS],
                 campCols=['spend','imp','clicks','reach','purch','rev','cart','chk','pv'],
                 gcampCols=['cost','imp','clicks','conv','convVal','gsess'],
@@ -461,7 +496,7 @@ p5 = dict(
 # Seletor de empresa + seletor de datas GLOBAL (mesma base diária do resto do BI).
 # Janela LIMITADA aos últimos 18 meses (GA4 mais leve). Seção 1 é diária (alinhada a `dates`/`idx`);
 # Seções 2-4 são mensais (bucket 'YYYY-MM') → o cliente agrega no período escolhido.
-P6_SITES = ['Moderna', 'DePoster', 'Empório']
+P6_SITES = ['Moderna', 'DePoster', 'Empório'] + PARTNER_SITES
 _p6m = END.month - 18; _p6y = END.year
 while _p6m <= 0: _p6m += 12; _p6y -= 1
 P6_FROM = max(date(_p6y, _p6m, 1), START).isoformat()   # primeiro dia, 18 meses atrás
@@ -626,7 +661,18 @@ def _prod_total():
         print(f"  [P6][AVISO] planilha produção indisponível (conectou no Windsor?): {e}"); return {}
     if not rows:
         print("  [P6][AVISO] planilha produção vazia"); return {}
+    # Sites próprios (MDR/DEP/EMP, 3 chars) + parceiros (códigos de tamanho variável: MON, COOR,
+    # BBALD, BARU). Casa o código COMPLETO primeiro; cai p/ prefixo de 3 chars só p/ os próprios.
     pmap = {'MDR': 'Moderna', 'DEP': 'DePoster', 'EMP': 'Empório'}
+    pmap.update(PARTNER_PROD)
+    def _prod_site(v):
+        u = _nfc(str(v or '')).strip().upper()
+        if not u: return None
+        if u in pmap: return pmap[u]           # código completo (MON, COOR, BBALD, BARU, MDR...)
+        if u[:3] in pmap: return pmap[u[:3]]   # próprios legados que venham com sufixo
+        for code, name in pmap.items():        # parceiro com sufixo no valor (ex.: 'BBALD - ...')
+            if u.startswith(code): return name
+        return None
     # field -> (coluna, topn por total)
     fields = (('material', 'material', None), ('tamanho', 'tamanho', None), ('cor', 'cor', None),
               ('estado', 'estado_entrega', 40), ('cidade', 'cidade_entrega', 80), ('produto', 'nome_produto', 120))
@@ -634,7 +680,7 @@ def _prod_total():
     n = dated = 0
     for r in rows:
         if 'MANUAL' in (str(r.get('pedido') or '')).upper(): continue   # exclui *.MANUAL
-        site = pmap.get((str(r.get('parceiro') or '')).strip().upper()[:3])
+        site = _prod_site(r.get('parceiro'))
         if not site: continue
         mk = _parse_month(r.get('data_pedido'))
         if not mk: continue   # sem data válida → fora do período
@@ -714,6 +760,15 @@ print("[QA] P5 base (últimos 30d): " + " | ".join(
     f"{s}: Meta~{sum(p5_sites[s]['custoMeta'][-30:]):.0f} Google~{sum(p5_sites[s]['custoGoogle'][-30:]):.0f} "
     f"receita~{sum(p5_sites[s]['receita'][-30:]):.0f} sess~{sum(p5_sites[s]['sessoes'][-30:])}"
     for s in P5_SITES))
+# QA PARCEIROS (não aborta — só valida o mapeamento; parceiros podem ter pouco/nenhum dado ainda)
+_pord=defaultdict(int); _prec=defaultdict(float)
+for _no,(_s,_d,_v) in orders.items():
+    if _s in PARTNER_SITES: _pord[_s]+=1; _prec[_s]+=_v
+print("[QA] Parceiros (histórico completo): " + " | ".join(
+    f"{s}: pedidos={_pord.get(s,0)} receita~{_prec.get(s,0):.0f} "
+    f"Meta~{sum(p5_sites[s]['custoMeta']):.0f} Google~{sum(p5_sites[s]['custoGoogle']):.0f} "
+    f"sess~{sum(p5_sites[s]['sessoes'])} gAds={'não' if s in NO_GOOGLE_ADS else 'sim'} "
+    f"prod={'sim' if p6_sites[s]['prod'] else 'NÃO'}" for s in PARTNER_SITES))
 if len(orders)<5000:
     sys.exit("ERRO QA: pedidos P1 fora do esperado — provável truncamento ou mudança de schema. NÃO publicar.")
 _p6_camps=sum(len(p6_sites[s]['campaign']) for s in P6_SITES)

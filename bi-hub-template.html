@@ -429,6 +429,10 @@ table.p6-heatgrid td{height:20px;border-radius:3px;min-width:18px}
       <button data-site="Moderna" class="active">Moderna Quadros</button>
       <button data-site="DePoster">DePoster</button>
       <button data-site="Empório">Empório dos Quadros</button>
+      <button data-site="Mondessin">Mondessin</button>
+      <button data-site="Coor">Coor</button>
+      <button data-site="Bruna Baldone">Bruna Baldone</button>
+      <button data-site="Estúdio Baru">Estúdio Baru</button>
     </div>
     <span class="p5-period" id="p5Period"></span>
   </div>
@@ -503,6 +507,10 @@ table.p6-heatgrid td{height:20px;border-radius:3px;min-width:18px}
       <button data-site="Moderna" class="active">Moderna Quadros</button>
       <button data-site="DePoster">DePoster</button>
       <button data-site="Empório">Empório dos Quadros</button>
+      <button data-site="Mondessin">Mondessin</button>
+      <button data-site="Coor">Coor</button>
+      <button data-site="Bruna Baldone">Bruna Baldone</button>
+      <button data-site="Estúdio Baru">Estúdio Baru</button>
     </div>
     <span class="p5-period" id="p6Period"></span>
   </div>
@@ -608,7 +616,7 @@ table.p6-heatgrid td{height:20px;border-radius:3px;min-width:18px}
 </section>
 
 <div class="page-foot">
-  <strong>Fontes de dados (ao vivo via Windsor.ai):</strong> Meta Ads (ajustado +12,15% de imposto a partir de 01/01/2026) · Google Ads · Analytics (GA4) · Instagram Insights · Faturamento Sisarte (receita e transações dos 3 sites, só status PAGO) · base de produção (atributos dos quadros na página CRO).<br>
+  <strong>Fontes de dados (ao vivo via Windsor.ai):</strong> Meta Ads (ajustado +12,15% de imposto a partir de 01/01/2026) · Google Ads · Analytics (GA4) · Instagram Insights · Faturamento Sisarte (receita e transações dos sites próprios e das empresas parceiras, só status PAGO) · base de produção (atributos dos quadros na página CRO).<br>
   CPS = Custo por Sessão · CPA = Custo por Aquisição (pedido) · ROAS = Receita ÷ Investimento em Ads.
 </div>
 
@@ -1056,9 +1064,16 @@ function _p5BuildCamps(site,i0,i1,siteCPA){
     out[pl].sort((a,b)=>b.m.custo-a.m.custo);
   });
   document.getElementById('p5CampMeta').innerHTML=_p5CampTable(out.Meta,true,siteCPA);
-  document.getElementById('p5CampGoogle').innerHTML=_p5CampTable(out.Google,false,siteCPA);
   document.getElementById('p5CampMetaSub').textContent='· '+out.Meta.length+' campanha(s) com atividade';
-  document.getElementById('p5CampGoogleSub').textContent='· '+out.Google.length+' campanha(s) com atividade';
+  // Empresas SEM conta Google Ads → aviso dedicado no lugar da tabela (Google entra como zero nos indicadores).
+  const noG=(DAILY5.meta.noGoogleAds||[]).indexOf(site)>=0;
+  if(noG){
+    document.getElementById('p5CampGoogle').innerHTML='<div style="padding:18px 14px;text-align:center;color:var(--ink-3);font-size:.92rem">A empresa/site não possui anúncios sendo veiculados no Google Ads no período selecionado.</div>';
+    document.getElementById('p5CampGoogleSub').textContent='· sem conta Google Ads';
+  }else{
+    document.getElementById('p5CampGoogle').innerHTML=_p5CampTable(out.Google,false,siteCPA);
+    document.getElementById('p5CampGoogleSub').textContent='· '+out.Google.length+' campanha(s) com atividade';
+  }
   return out;
 }
 function _p5Analysis(camps,siteCPA,siteCPS){
