@@ -35,6 +35,28 @@ jobs:
           WINDSOR_API_KEY: ${{ secrets.WINDSOR_API_KEY }}
         run: python build_cloud.py
 
+      # ==========================================================================
+      # PUBLICAÇÃO NO CLOUDFLARE PAGES (wrangler) — passo OBRIGATÓRIO.
+      # O projeto bi-hub-trafego-pago é "Direct Upload": o Cloudflare NÃO faz
+      # auto-deploy a partir de commits do GitHub (não dá pra ligar Git em projeto
+      # já existente). Então é AQUI que o index.html recém-gerado vai pro ar.
+      # Requer 2 secrets no repo: CLOUDFLARE_API_TOKEN (permissão Account >
+      # Cloudflare Pages > Edit) e CLOUDFLARE_ACCOUNT_ID.
+      # Deploy roda ANTES do commit de propósito: publicar no painel não pode
+      # depender do git push (que pode ter corrida de commits).
+      # ==========================================================================
+      - name: Publicar no Cloudflare Pages (wrangler)
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          rm -rf dist && mkdir -p dist
+          cp index.html dist/index.html
+          npx --yes wrangler@3 pages deploy dist \
+            --project-name=bi-hub-trafego-pago \
+            --branch=main \
+            --commit-dirty=true
+
       - name: Publicar (commit do index.html, se mudou)
         run: |
           git config user.name  "bi-bot"
