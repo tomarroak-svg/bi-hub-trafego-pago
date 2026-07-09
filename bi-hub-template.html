@@ -404,6 +404,7 @@ table.p6-heatgrid td{height:20px;border-radius:3px;min-width:18px}
 
 <nav class="tabs">
   <button class="tab active" data-page="page1">Performance Sites Próprios</button>
+  <button class="tab" data-page="page7">Performance Parceiros</button>
   <button class="tab" data-page="page5">Detalhe por Site</button>
   <button class="tab" data-page="page6">CRO</button>
 </nav>
@@ -418,6 +419,14 @@ table.p6-heatgrid td{height:20px;border-radius:3px;min-width:18px}
 
   <div class="section-label" id="dailyLabel">Tendência diária — consolidado Hub</div>
   <div class="chart-grid" id="dailyCharts"></div>
+</section>
+
+
+<!-- ============ PÁGINA 7 — Performance Parceiros ============ -->
+<section id="page7" class="page">
+  <div class="section-label" id="p7Label">Indicadores no período — empresas parceiras</div>
+  <div id="p7Wrap"></div>
+  <p class="foot-note">Cada bloco mostra os mesmos indicadores da página "Detalhe por Site", calculados só com os dados da empresa parceira. Parceiros <b>não</b> consolidam na página Performance Sites Próprios. Receita/transações: Faturamento Sisarte (status PAGO, coluna parceiro) · Custo: Meta Ads (+12,15%) + Google Ads · Sessões: GA4.</p>
 </section>
 
 
@@ -534,7 +543,7 @@ table.p6-heatgrid td{height:20px;border-radius:3px;min-width:18px}
 
   <div class="section-label">Perfil demográfico das sessões <span class="h4-note">sexo × faixa etária</span></div>
   <div class="chart-grid">
-    <div class="chart-card"><h4>Sessões por sexo e idade</h4><div class="chart-sub">barras por faixa etária · Feminino vs Masculino</div><div class="chart-box p6-tall"><canvas id="p6cGA"></canvas></div></div>
+    <div class="chart-card"><h4>Sessões por sexo e idade</h4><div class="chart-sub">barras por faixa etária · Feminino vs Masculino · rótulos em % do total</div><div class="chart-box p6-tall"><canvas id="p6cGA"></canvas></div></div>
   </div>
 
   <div class="section-label">Páginas mais visitadas <span class="h4-note">sessões e taxa de rejeição</span></div>
@@ -551,13 +560,6 @@ table.p6-heatgrid td{height:20px;border-radius:3px;min-width:18px}
 
   <!-- ===== SEÇÃO 2 — ANÁLISE DOS PRODUTOS ===== -->
   <div class="p6-secband">2 · Análise dos Produtos</div>
-  <div class="section-label">Por nome de produto <span class="h4-note">top 80 por receita · período selecionado · fonte GA4</span></div>
-  <div class="p5-scroll" style="max-height:420px">
-    <table class="p3-table p5-table p6-pages">
-      <thead><tr><th>Produto</th><th class="r" style="width:13%">Qtd vendida</th><th class="r" style="width:12%">Qtd vista</th><th class="r" style="width:14%">Tx conversão</th><th class="r" style="width:16%">Receita</th></tr></thead>
-      <tbody id="p6ProdNameBody"></tbody>
-    </table>
-  </div>
   <div class="section-label">Por variante do produto <span class="h4-note">nome + material/tamanho · top 120 por receita</span></div>
   <div class="p5-scroll" style="max-height:420px">
     <table class="p3-table p5-table p6-pages">
@@ -603,6 +605,10 @@ table.p6-heatgrid td{height:20px;border-radius:3px;min-width:18px}
   <div class="chart-grid p6-grid2">
     <div class="chart-card"><h4>Vendas por estado</h4><div class="chart-sub">qtd de itens · estado de entrega</div><div class="chart-box p6-tall"><canvas id="p6cEstado"></canvas></div></div>
     <div class="chart-card"><h4>Vendas por cidade</h4><div class="chart-sub">qtd de itens · cidade de entrega · top 15</div><div class="chart-box p6-tall"><canvas id="p6cCidade"></canvas></div></div>
+  </div>
+  <div class="chart-grid p6-grid2">
+    <div class="chart-card"><h4>% de vendas por estado</h4><div class="chart-sub">% da qtd de itens · estado de entrega · demais agrupados em "Outros"</div><div class="chart-box p6-pie"><canvas id="p6pUfVendas"></canvas></div></div>
+    <div class="chart-card"><h4>% de vendas por cidade</h4><div class="chart-sub">% da qtd de itens · cidade de entrega · demais agrupados em "Outros"</div><div class="chart-box p6-pie"><canvas id="p6pCidadeVendas"></canvas></div></div>
   </div>
   <div class="section-label">Itens vendidos por produto <span class="h4-note">base de produção · período selecionado</span></div>
   <div class="p5-scroll" style="max-height:380px"><table class="p3-table p5-table p6-pages"><thead><tr><th>Produto</th><th class="r" style="width:26%">Qtd vendida</th></tr></thead><tbody id="p6ProdQtyBody"></tbody></table></div>
@@ -835,6 +841,35 @@ function applyPeriod(a,b){
   renderHero();renderSites();renderDailyCharts();
   if(typeof applyP5==='function') applyP5(a,b);   // P5 acompanha o mesmo período
   if(typeof applyP6==='function') applyP6(a,b);   // P6 (CRO) acompanha o mesmo período
+  if(typeof applyP7==='function') applyP7(a,b);   // P7 (Parceiros) acompanha o mesmo período
+}
+
+/* =========================================================================
+   PÁGINA 7 — Performance Parceiros (KPIs no período, um bloco por empresa)
+   Reusa DAILY5 (mesmas séries da página Detalhe por Site) e o motor _p5Agg/_p5KPIs.
+   Parceiros = todos os sites do DAILY5 além dos 3 próprios (ordem definida no build).
+   ========================================================================= */
+function applyP7(a,b){
+  if(typeof DAILY5==='undefined'||!DAILY5||!a||!b) return;
+  const wrap=document.getElementById('p7Wrap'); if(!wrap) return;
+  if(a>b){const t=a;a=b;b=t;}
+  const partners=(DAILY5.meta&&DAILY5.meta.sites)?DAILY5.meta.sites.slice(3):[];
+  let i0=DAILY5.dates.indexOf(a),i1=DAILY5.dates.indexOf(b);
+  if(i0<0)i0=0; if(i1<0)i1=DAILY5.dates.length-1;
+  const nd=i1-i0+1,pp1=i0-1,pp0=i0-nd,hasPrev=pp0>=0;
+  const lb=document.getElementById('p7Label');
+  if(lb) lb.textContent='Indicadores no período — '+fmtRange(a,b)+(hasPrev?' · variação vs. '+nd+'d anteriores':'');
+  const noG=(DAILY5.meta&&DAILY5.meta.noGoogleAds)||[];
+  wrap.innerHTML=partners.map((s,ix)=>{
+    const kpis=_p5KPIs(_p5Agg(s,i0,i1), hasPrev?_p5Agg(s,pp0,pp1):null, nd);
+    const tagG=noG.indexOf(s)>=0?' <span class="h4-note">· sem Google Ads</span>':'';
+    return '<div class="section-label"'+(ix?' style="margin-top:28px"':'')+'>'+s+tagG+'</div>'+
+      '<div class="hero-kpis">'+kpis.map(k=>'<div class="kpi" data-accent="'+k.accent+'">'+
+        '<div class="kpi-label">'+k.label+'</div>'+
+        '<div class="kpi-value">'+k.value+'</div>'+
+        '<div class="kpi-foot">'+pillHTML(k.v)+'<span class="kpi-sub">'+k.note+'</span></div>'+
+      '</div>').join('')+'</div>';
+  }).join('') || '<p class="foot-note">Sem empresas parceiras configuradas no build.</p>';
 }
 
 
@@ -1344,13 +1379,14 @@ function _p6pie(ctx, pairs){
     plugins:[dl] });
 }
 
-/* barras verticais agrupadas (sexo × idade) */
+/* barras verticais agrupadas (sexo × idade) — rótulos em % do total de sessões */
 function _p6grouped(ctx, ages, fem, masc){
+  const _gaTot = fem.concat(masc).reduce((a,b)=>a+(b||0),0) || 1;
   const dl={ id:'p6gdl', afterDatasetsDraw(chart){
     const c=chart.ctx; c.save(); c.font='700 9px "Segoe UI",system-ui,sans-serif';
     c.fillStyle='#5a606e'; c.textAlign='center'; c.textBaseline='bottom';
     chart.data.datasets.forEach((ds,di)=>{ const meta=chart.getDatasetMeta(di);
-      meta.data.forEach((el,i)=>{ const v=ds.data[i]; if(!v) return; c.fillText(_miBr(v), el.x, el.y-3); }); });
+      meta.data.forEach((el,i)=>{ const v=ds.data[i]; if(!v) return; c.fillText((v/_gaTot*100).toFixed(1)+'%', el.x, el.y-3); }); });
     c.restore(); } };
   return new Chart(ctx,{ type:'bar',
     data:{labels:ages, datasets:[
@@ -1358,7 +1394,7 @@ function _p6grouped(ctx, ages, fem, masc){
       {label:'Masculino', data:masc, backgroundColor:hexA(COL.blue,.85), hoverBackgroundColor:COL.blue, borderRadius:5, maxBarThickness:34} ]},
     options:{ responsive:true, maintainAspectRatio:false, layout:{padding:{top:16}},
       plugins:{ legend:{position:'top',labels:{boxWidth:12,boxHeight:12,font:{size:11},padding:10}},
-        tooltip:{backgroundColor:'#1a1d29',padding:9,cornerRadius:7,callbacks:{label:i=>`${i.dataset.label}: ${_miBr(i.raw)}`}} },
+        tooltip:{backgroundColor:'#1a1d29',padding:9,cornerRadius:7,callbacks:{label:i=>`${i.dataset.label}: ${_miBr(i.raw)} (${(i.raw/_gaTot*100).toFixed(1)}%)`}} },
       scales:{ x:{grid:{display:false},border:{display:false},ticks:{font:{size:11}}},
         y:{grid:{color:'#eef0f3'},border:{display:false},beginAtZero:true,ticks:{callback:v=>_miBr(v),maxTicksLimit:5}} } },
     plugins:[dl] });
@@ -1475,7 +1511,6 @@ function _p6Render(){
   if(gaC && ga.ages.length) _P6.charts.push(_p6grouped(gaC.getContext('2d'), ga.ages, ga.female, ga.male));
   _p6fillTable('p6PagesBody', _p6aggPages(rec.pages||{}, i0, i1, 50).map(r=>[r[0], _miBr(r[1]), (r[2]*100).toFixed(1)+'%']), 3);
   /* ---- Seção 2: produtos ---- */
-  _p6fillTable('p6ProdNameBody', _p6prodRows(rec.prodName, mF, mT), 5);
   _p6fillTable('p6ProdSkuBody',  _p6prodRows(rec.prodSku,  mF, mT), 5);
   /* ---- Seção 3: vendas ---- */
   _p6RenderTime(rec, mF, mT);
@@ -1491,6 +1526,11 @@ function _p6Render(){
   _P6.charts.push(_p6barH('p6cCor', _p6prodAttr(prod.cor,mF,mT,12)));
   _P6.charts.push(_p6barH('p6cEstado', _p6prodAttr(prod.estado,mF,mT,15)));
   _P6.charts.push(_p6barH('p6cCidade', _p6prodAttr(prod.cidade,mF,mT,15)));
+  /* pizzas de % da qtd de vendas por estado/cidade (mesma base de produção; top 5 + Outros) */
+  const _pvUf=_p6prodAttr(prod.estado,mF,mT,9999), _pvCt=_p6prodAttr(prod.cidade,mF,mT,9999);
+  const _pvUfC=document.getElementById('p6pUfVendas'), _pvCtC=document.getElementById('p6pCidadeVendas');
+  if(_pvUfC && _pvUf.length) _P6.charts.push(_p6pie(_pvUfC.getContext('2d'), _pvUf));
+  if(_pvCtC && _pvCt.length) _P6.charts.push(_p6pie(_pvCtC.getContext('2d'), _pvCt));
   _p6fillTable('p6ProdQtyBody', _p6prodAttr(prod.produto,mF,mT,80).map(r=>[r[0], _miBr(r[1])]), 2);
   const pn=document.getElementById('p6ProdNote');
   if(pn) pn.textContent=(prod.material&&Object.keys(prod.material).length)
