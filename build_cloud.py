@@ -421,43 +421,86 @@ for r in windsor_safe("instagram", ["date", "account_id", "follower_count"],
     if i is None: continue
     ig_new[s][i] = ig_new[s].get(i, 0) + brnum(r.get('follower_count'))
 
-# demografia: POR CONTA, UMA dimensão por chamada (limite do IG), vitalícia (sem janela)
+# demografia: chamada COMBINADA com account_id como CAMPO, uma dimensão por chamada.
+# BUG CORRIGIDO (10/07/2026): o Windsor IGNORA account_id como PARÂMETRO no Instagram
+# (igual ao GA4) — as chamadas por conta devolviam a MESMA conta pra todos os sites,
+# repetindo demografia/posts (dados da Bruna Baldone em todo mundo). Padrão correto =
+# o mesmo dos pulls diários acima: puxar combinado e filtrar por account_id no Python.
 ig_demo = {s: {'age': {}, 'gender': {}, 'city': {}} for s in P5_SITES}
-for acc, s in SITE_IG.items():
-    for dim_key, name_f, val_f in DEMO_FIELDS:
-        for r in windsor_safe("instagram", [name_f, val_f], account_id=acc,
-                              date_from=None, date_to=None, max_rows=400, retries=2):
-            k = str(r.get(name_f) or '').strip()
-            v = brnum(r.get(val_f))
-            if not k or v <= 0: continue
-            ig_demo[s][dim_key][k] = ig_demo[s][dim_key].get(k, 0) + v
+for dim_key, name_f, val_f in DEMO_FIELDS:
+    _drows = windsor_safe("instagram", [name_f, val_f, "account_id"],
+                          date_from=None, date_to=None, max_rows=4000, retries=2)
+    _dmapped = 0
+    for r in _drows:
+        s = SITE_IG.get(str(r.get('account_id')))
+        if not s: continue
+        k = str(r.get(name_f) or '').strip()
+        v = brnum(r.get(val_f))
+        if not k or v <= 0: continue
+        ig_demo[s][dim_key][k] = ig_demo[s][dim_key].get(k, 0) + v
+        _dmapped += 1
+    if _drows and not _dmapped:
+        # resposta veio sem account_id utilizável → fallback pro modo antigo (por conta),
+        # que pelo menos preenche algo (mesmo sabendo do risco de repetição)
+        print(f"  [P5][AVISO] demografia {dim_key}: resposta combinada sem account_id — fallback por conta")
+        for acc, s in SITE_IG.items():
+            for r in windsor_safe("instagram", [name_f, val_f], account_id=acc,
+                                  date_from=None, date_to=None, max_rows=400, retries=2):
+                k = str(r.get(name_f) or '').strip()
+                v = brnum(r.get(val_f))
+                if not k or v <= 0: continue
+                ig_demo[s][dim_key][k] = ig_demo[s][dim_key].get(k, 0) + v
 
-# posts: POR CONTA, com os campos de MÍDIA (media_*) — os de conta (reach/likes) vinham 0.
-# Métricas são por mídia (lifetime). Janela de ~150 dias seleciona os posts recentes.
+# posts: chamada COMBINADA com account_id como CAMPO (mesmo fix da demografia acima).
+# Campos de MÍDIA (media_*) — os de conta (reach/likes) vinham 0. Métricas por mídia (lifetime).
 ig_posts = {s: {} for s in P5_SITES}
 _post_from = (END - timedelta(days=380)).isoformat()   # ~12 meses, p/ Interações/Engajamento mensais cobrirem o ano
-for acc, s in SITE_IG.items():
-    for r in windsor_safe("instagram",
-            ["media_id", "media_product_type", "timestamp", "media_reach",
-             "media_like_count", "media_comments_count", "media_saved",
-             "media_url", "media_thumbnail_url"],
-            account_id=acc, date_from=_post_from, date_to=ENDS, max_rows=2000, retries=2):
-        mid = str(r.get('media_id') or '').strip()
-        if not mid: continue
-        # Reels: media_url é o vídeo (a tag <img> falha) → usar media_thumbnail_url. Imagens/carrossel: media_url.
-        thumb = (str(r.get('media_thumbnail_url') or '').strip() or str(r.get('media_url') or '').strip())
-        vals = dict(reach=brnum(r.get('media_reach')), likes=brnum(r.get('media_like_count')),
-                    comments=brnum(r.get('media_comments_count')), saves=brnum(r.get('media_saved')),
-                    shares=0.0, ti=0.0)
-        cur = ig_posts[s].get(mid)
-        if cur is None:
-            ig_posts[s][mid] = dict(fmt=str(r.get('media_product_type') or '').strip(),
-                ts=str(r.get('timestamp') or '').strip()[:10], thumb=thumb, **vals)
-        else:
-            for k in ('reach', 'likes', 'comments', 'saves'): cur[k] = max(cur[k], vals[k])
-            if not cur['thumb']: cur['thumb'] = thumb
-            if not cur['ts']:    cur['ts']    = str(r.get('timestamp') or '').strip()[:10]
-            if not cur['fmt']:   cur['fmt']   = str(r.get('media_product_type') or '').strip()
+_POST_FIELDS = ["media_id", "media_product_type", "timestamp", "media_reach",
+                "media_like_count", "media_comments_count", "media_saved",
+                "media_url", "media_thumbnail_url"]
+
+def _ig_post_add(s, r):
+    mid = str(r.get('media_id') or '').strip()
+    if not mid: return
+    # Reels: media_url é o vídeo (a tag <img> falha) → usar media_thumbnail_url. Imagens/carrossel: media_url.
+    thumb = (str(r.get('media_thumbnail_url') or '').strip() or str(r.get('media_url') or '').strip())
+    vals = dict(reach=brnum(r.get('media_reach')), likes=brnum(r.get('media_like_count')),
+                comments=brnum(r.get('media_comments_count')), saves=brnum(r.get('media_saved')),
+                shares=0.0, ti=0.0)
+    cur = ig_posts[s].get(mid)
+    if cur is None:
+        ig_posts[s][mid] = dict(fmt=str(r.get('media_product_type') or '').strip(),
+            ts=str(r.get('timestamp') or '').strip()[:10], thumb=thumb, **vals)
+    else:
+        for k in ('reach', 'likes', 'comments', 'saves'): cur[k] = max(cur[k], vals[k])
+        if not cur['thumb']: cur['thumb'] = thumb
+        if not cur['ts']:    cur['ts']    = str(r.get('timestamp') or '').strip()[:10]
+        if not cur['fmt']:   cur['fmt']   = str(r.get('media_product_type') or '').strip()
+
+_prows = windsor_safe("instagram", _POST_FIELDS + ["account_id"],
+                      date_from=_post_from, date_to=ENDS, max_rows=20000, retries=2)
+_pmapped = 0
+for r in _prows:
+    s = SITE_IG.get(str(r.get('account_id')))
+    if not s: continue
+    _ig_post_add(s, r)
+    _pmapped += 1
+if _prows and not _pmapped:
+    print("  [P5][AVISO] posts: resposta combinada sem account_id — fallback por conta")
+    for acc, s in SITE_IG.items():
+        for r in windsor_safe("instagram", _POST_FIELDS, account_id=acc,
+                              date_from=_post_from, date_to=ENDS, max_rows=2000, retries=2):
+            _ig_post_add(s, r)
+
+# QA anti-repetição: dois sites com o MESMO conjunto de posts = mapeamento quebrado
+_psets = {s: frozenset(ig_posts[s].keys()) for s in P5_SITES if ig_posts[s]}
+_pdup = [(a, b) for ai, a in enumerate(list(_psets)) for b in list(_psets)[ai+1:] if _psets[a] == _psets[b]]
+if _pdup:
+    print(f"  [P5][AVISO] posts IDÊNTICOS entre sites {_pdup} — account_id do IG não está segregando!")
+print("  [P5][DBG] IG por site: " + " | ".join(
+    f"{s}: posts={len(ig_posts[s])} últ={max((p['ts'] for p in ig_posts[s].values()), default='—')} "
+    f"demo g/a/c={len(ig_demo[s]['gender'])}/{len(ig_demo[s]['age'])}/{len(ig_demo[s]['city'])}"
+    for s in P5_SITES))
 # diagnóstico: confirma se métricas dos posts vêm preenchidas (sem expor URL)
 _mp = list(ig_posts.get('Moderna', {}).values())
 if _mp:
