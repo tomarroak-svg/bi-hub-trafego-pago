@@ -741,18 +741,52 @@ print("[P6][DBG] dims/empresa: " + " | ".join(
     f"hora={len(p6_sites[s]['hour'])} prod={'sim' if p6_sites[s]['prod'] else 'NÃO'}" for s in P6_SITES))
 
 # ===================== INJEÇÃO NO TEMPLATE =====================
-html=open(os.path.join(BASE,'bi-hub-template.html'),encoding='utf-8').read()
+TPL=open(os.path.join(BASE,'bi-hub-template.html'),encoding='utf-8').read()
+assert TPL.count('/*__DAILY__*/null')==1, "template sem placeholder P1 (__DAILY__)"
+
+def _inject(d1, d5, d6, view=None):
+    """Monta um HTML a partir do template. d1/d5/d6 = JSON string (ou 'null').
+    view = dict {'partner': <site>} pra variante restrita de parceiro (injeta __VIEW__)."""
+    h=TPL.replace('/*__DAILY__*/null','/*__DAILY__*/'+d1,1)
+    # P5 e P6 — injeção CONDICIONAL (padrão da casa): permite subir pipeline antes do HTML.
+    if h.count('/*__DAILY5__*/null')==1:
+        h=h.replace('/*__DAILY5__*/null','/*__DAILY5__*/'+d5,1)
+    if h.count('/*__DAILY6__*/null')==1:
+        h=h.replace('/*__DAILY6__*/null','/*__DAILY6__*/'+d6,1)
+    if view is not None and h.count('/*__VIEW__*/null')==1:
+        h=h.replace('/*__VIEW__*/null','/*__VIEW__*/'+json.dumps(view,ensure_ascii=False,separators=(',',':')),1)
+    return h
+
 d1=json.dumps(p1, ensure_ascii=False, separators=(',',':'))
-assert html.count('/*__DAILY__*/null')==1, "template sem placeholder P1 (__DAILY__)"
-html=html.replace('/*__DAILY__*/null','/*__DAILY__*/'+d1,1)
-# P5 e P6 — injeção CONDICIONAL (padrão da casa): permite subir pipeline antes do HTML.
 d5=json.dumps(p5, ensure_ascii=False, separators=(',',':'))
-if html.count('/*__DAILY5__*/null')==1:
-    html=html.replace('/*__DAILY5__*/null','/*__DAILY5__*/'+d5,1)
 d6=json.dumps(p6, ensure_ascii=False, separators=(',',':'))
-if html.count('/*__DAILY6__*/null')==1:
-    html=html.replace('/*__DAILY6__*/null','/*__DAILY6__*/'+d6,1)
-open(os.path.join(BASE,'index.html'),'w',encoding='utf-8').write(html)
+open(os.path.join(BASE,'index.html'),'w',encoding='utf-8').write(_inject(d1,d5,d6))
+
+# ===================== VARIANTES POR PARCEIRO (acesso restrito) =====================
+# Cada parceiro ganha um HTML próprio em p/<slug>/index.html contendo APENAS os dados
+# do site dele (P5/P6 filtrados). P1 NÃO é injetado (fica null) — mesmo princípio de
+# segurança do spin-off: dado que o parceiro não pode ver, não existe no arquivo.
+# Quem decide qual arquivo servir é o _worker.js (Pages Function) pelo e-mail do
+# Cloudflare Access. Slugs casam com o mapa PARTNER_EMAILS do _worker.js.
+PARTNER_SLUGS={'Mondessin':'mondessin','Coor':'coor','Bruna Baldone':'bruna-baldone',_nfc('Estúdio Baru'):'estudio-baru'}
+assert set(PARTNER_SLUGS)==set(PARTNER_SITES), "PARTNER_SLUGS fora de sincronia com PARTNER_SITES"
+for _psite,_slug in PARTNER_SLUGS.items():
+    _m5=dict(p5['meta']); _m5['sites']=[_psite]; _m5['noGoogleAds']=[x for x in NO_GOOGLE_ADS if x==_psite]
+    _p5v=dict(meta=_m5, dates=dates,
+              sites={_psite:p5['sites'][_psite]}, campaigns={_psite:p5['campaigns'][_psite]},
+              ads={_psite:p5['ads'][_psite]}, instagram={_psite:p5['instagram'][_psite]})
+    _m6=dict(p6['meta']); _m6['sites']=[_psite]
+    _p6v=dict(meta=_m6, dates=dates, sites={_psite:p6['sites'][_psite]})
+    _d5v=json.dumps(_p5v,ensure_ascii=False,separators=(',',':'))
+    _d6v=json.dumps(_p6v,ensure_ascii=False,separators=(',',':'))
+    # QA de vazamento: nenhum outro site pode aparecer como chave nos JSONs da variante.
+    for _other in (set(P5_SITES)-{_psite}):
+        _k=json.dumps(_other,ensure_ascii=False)+':{'
+        assert _k not in _d5v and _k not in _d6v, f"VAZAMENTO: dados de {_other} na variante {_slug}"
+    _dir=os.path.join(BASE,'p',_slug); os.makedirs(_dir,exist_ok=True)
+    _hv=_inject('null', _d5v, _d6v, view=dict(partner=_psite))
+    open(os.path.join(_dir,'index.html'),'w',encoding='utf-8').write(_hv)
+    print(f"  [PARCEIRO] p/{_slug}/index.html gerado ({len(_hv)} chars) — só {_psite}")
 
 # ===================== QA (aborta se algo absurdo) =====================
 print(f"[QA] pedidos P1={len(orders)} (ref >5000) | dias na base={len(dates)}")

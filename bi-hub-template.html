@@ -801,6 +801,9 @@ function renderDailyCharts(){
    MOTOR DE RECÁLCULO POR PERÍODO (Página 1) — opera sobre DAILY
    ========================================================================= */
 const DAILY = /*__DAILY__*/null;
+/* VIEW: null no painel completo; {"partner":"<Site>"} nas variantes restritas de parceiro
+   (geradas pelo build_cloud.py em p/<slug>/index.html — nelas DAILY é null e DAILY5/6 só têm 1 site). */
+const VIEW = /*__VIEW__*/null;
 const SITES_ORDER=['Moderna','DePoster','Empório'];
 const SITE_META={Moderna:{id:'moderna',nome:'Moderna Quadros'},DePoster:{id:'deposter',nome:'DePoster'},'Empório':{id:'emporio',nome:'Empório dos Quadros'}};
 const _fmtBr=ds=>{const p=ds.split('-');return `${p[2]}/${p[1]}/${p[0].slice(2)}`;};
@@ -819,6 +822,13 @@ function _ent(id,nome,cur,prv,nd){return{id,nome,tipo:id==='hub'?'consolidado':'
 function applyPeriod(a,b){
   if(!a||!b) return;
   if(a>b){const t=a;a=b;b=t;}
+  if(!DAILY){
+    /* modo parceiro: P1 não é injetado — o período dirige P5/P6 direto */
+    document.getElementById('periodLabel').textContent='Período · '+fmtRange(a,b);
+    if(typeof applyP5==='function') applyP5(a,b);
+    if(typeof applyP6==='function') applyP6(a,b);
+    return;
+  }
   let i0=DAILY.dates.indexOf(a),i1=DAILY.dates.indexOf(b);
   if(i0<0)i0=0; if(i1<0)i1=DAILY.dates.length-1;
   const nd=i1-i0+1,p1=i0-1,p0=i0-nd,hasPrev=p0>=0;
@@ -1003,7 +1013,7 @@ function _p5Init(){
     btn.addEventListener('click',()=>{
       document.querySelectorAll('#p5Seg button').forEach(x=>x.classList.remove('active'));
       btn.classList.add('active'); _P5.site=btn.dataset.site;
-      applyP5(_P5.a||(DAILY.meta.end.slice(0,8)+'01'), _P5.b||DAILY.meta.end);
+      applyP5(_P5.a||((DAILY||DAILY5).meta.end.slice(0,8)+'01'), _P5.b||(DAILY||DAILY5).meta.end);
     });
   });
   const lg=document.getElementById('p5FarolLegend');
@@ -1610,14 +1620,43 @@ function _sortableTable(tbl){
 function _initSortableTables(){ document.querySelectorAll('table.p3-table').forEach(_sortableTable); }
 
 (function(){
+  const M=(DAILY||DAILY5).meta;   /* modo parceiro: DAILY é null, a base vira o meta da P5 */
+
+  /* ---- MODO PARCEIRO (VIEW.partner): só "Detalhe por Site" e "CRO" do próprio site ---- */
+  if(VIEW && VIEW.partner){
+    const P=(VIEW.partner||'').normalize('NFC');
+    /* remove abas e seções que não pertencem ao parceiro (o HTML delas nem tem dados: DAILY=null) */
+    document.querySelectorAll('.tab').forEach(t=>{
+      if(t.dataset.page==='page1'||t.dataset.page==='page7') t.remove();
+    });
+    ['page1','page7'].forEach(id=>{const el=document.getElementById(id); if(el) el.remove();});
+    /* seletor de empresa: só o site do parceiro */
+    ['p5Seg','p6Seg'].forEach(id=>{
+      document.querySelectorAll('#'+id+' button').forEach(b=>{
+        if((b.dataset.site||'').normalize('NFC')===P) b.classList.add('active');
+        else b.remove();
+      });
+    });
+    _P5.site=P; _P6.site=P;
+    /* aba inicial = Detalhe por Site */
+    const t5=document.querySelector('.tab[data-page="page5"]'); if(t5) t5.classList.add('active');
+    const s5=document.getElementById('page5'); if(s5) s5.classList.add('active');
+    /* botão "Atualizar agora" fica DISPONÍVEL pro parceiro: dispara o mesmo workflow,
+       que regenera o BI completo + todas as variantes num build só */
+    const nt=document.querySelector('.notice');
+    if(nt) nt.innerHTML='<strong>Todas as páginas</strong> seguem o seletor de período (início → fim) acima — KPIs, variações, gráficos e tabelas recalculam ao vivo. Fontes: Windsor.ai (Meta Ads + Google Ads + sessões GA4 + Instagram) e faturamento (só pedidos PAGOS). Dados atualizados automaticamente 2× ao dia — ou na hora, pelo botão "Atualizar agora".';
+    const h1=document.querySelector('header h1'); if(h1) h1.textContent='BI Tráfego Pago — '+P;
+    document.title='BI Tráfego Pago — '+P;
+  }
+
   const s=document.getElementById('dtStart'),e=document.getElementById('dtEnd');
-  s.min=DAILY.meta.start; s.max=DAILY.meta.end; e.min=DAILY.meta.start; e.max=DAILY.meta.end;
-  const end=DAILY.meta.end, mStart=end.slice(0,8)+'01';
+  s.min=M.start; s.max=M.end; e.min=M.start; e.max=M.end;
+  const end=M.end, mStart=end.slice(0,8)+'01';
   s.value=mStart; e.value=end;
   document.getElementById('applyBtn').addEventListener('click',()=>applyPeriod(s.value,e.value));
   applyPeriod(mStart,end);
   var _vt=document.getElementById('versionTag');
-  if(_vt&&DAILY.meta&&DAILY.meta.updated_at) _vt.textContent='Atualizado em '+DAILY.meta.updated_at;
+  if(_vt&&M.updated_at) _vt.textContent='Atualizado em '+M.updated_at;
 
 
   /* ---- P5 init ---- */
