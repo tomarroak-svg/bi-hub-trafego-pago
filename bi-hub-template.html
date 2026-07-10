@@ -1227,7 +1227,8 @@ function _p5RenderIg(site,a,b,i0,i1){
   const kpis=[
     {l:'Seguidores',v:nf0.format(follNow),s:'total atual'},
     {l:'Alcance total',v:nf0.format(Math.round(reachTot)),s:'no período'},
-    {l:'Taxa de Engajamento',v:(engRate==null?'—':nf1.format(engRate)+'%'),s:'interações ÷ alcance dos posts'},
+    {l:'Taxa de Engajamento',v:(engRate==null?'—':nf1.format(engRate)+'%'),
+     s:(postsPer.length?('interações ÷ alcance · '+postsPer.length+' post'+(postsPer.length>1?'s':'')+' no período'):'sem posts no período selecionado')},
   ];
   document.getElementById('p5IgKpis').innerHTML=kpis.map(k=>`<div class="kpi" data-accent="purple">
     <div class="kpi-label">${k.l}</div><div class="kpi-value">${k.v}</div>
