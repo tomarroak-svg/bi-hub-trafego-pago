@@ -40,6 +40,7 @@ const PARTNER_EMAILS = {
   'rogerioarrudapinto@gmail.com':   'coor',
   'brunabaldone@gmail.com':         'bruna-baldone',
   'contato@estudiobaru.com.br':     'estudio-baru',
+  'hubdecor.sp@gmail.com':          'estudio-baru',  // espelho p/ teste interno — mesma visão da Estúdio Baru
 };
 
 // Opcional: liberar um DOMÍNIO inteiro pra um parceiro (ex.: toda @mondessin.com.br)
