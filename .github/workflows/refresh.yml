@@ -52,6 +52,11 @@ jobs:
         run: |
           rm -rf dist && mkdir -p dist
           cp index.html dist/index.html
+          # Variantes restritas de parceiro (p/<slug>/index.html) — geradas pelo build_cloud.py
+          cp -r p dist/p
+          # Pages Function que roteia por e-mail do Cloudflare Access (equipe → completo,
+          # parceiro → só a variante dele). Sem este arquivo o painel NÃO segrega acesso.
+          cp _worker.js dist/_worker.js
           npx --yes wrangler@3 pages deploy dist \
             --project-name=bi-hub-trafego-pago \
             --branch=main \
