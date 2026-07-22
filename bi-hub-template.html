@@ -481,7 +481,7 @@ table.p6-heatgrid td{height:20px;border-radius:3px;min-width:18px}
 
   <p class="foot-note" id="p5FarolLegend"></p>
 
-  <div class="section-label">Análise das campanhas ativas</div>
+  <div class="section-label" id="p5AnalysisLabel">Análise das campanhas ativas</div>
   <div class="p5-analysis" id="p5Analysis"></div>
 
   <div class="section-label">Anúncios ativos — Meta Ads <span class="h4-note" id="p5AdsSub"></span></div>
@@ -1648,6 +1648,8 @@ function _initSortableTables(){ document.querySelectorAll('table.p3-table').forE
     if(nt) nt.innerHTML='<strong>Todas as páginas</strong> seguem o seletor de período (início → fim) acima — KPIs, variações, gráficos e tabelas recalculam ao vivo. Fontes: Windsor.ai (Meta Ads + Google Ads + sessões GA4 + Instagram) e faturamento (só pedidos PAGOS). Dados atualizados automaticamente 2× ao dia — ou na hora, pelo botão "Atualizar agora".';
     const h1=document.querySelector('header h1'); if(h1) h1.textContent='BI Tráfego Pago — '+P;
     document.title='BI Tráfego Pago — '+P;
+    /* parceiros NÃO visualizam a seção "Análise das campanhas ativas" (página Detalhe por Site) */
+    ['p5AnalysisLabel','p5Analysis'].forEach(id=>{const el=document.getElementById(id); if(el) el.style.display='none';});
   }
 
   const s=document.getElementById('dtStart'),e=document.getElementById('dtEnd');
