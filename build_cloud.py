@@ -344,23 +344,28 @@ campaigns = {s: {'Meta': _serialize_camps(camp_meta[s]),
                  'Google': _serialize_camps(camp_google[s])} for s in P5_SITES}
 
 # ---------- ANÚNCIOS META ----------
-# Anúncios: por conta, em DOIS níveis. Os campos "exóticos" (vídeo 25%, engajamento de página)
-# parecem derrubar a query de anúncio (HTTP 500); então tenta completo e, se falhar, refaz só
-# com o essencial (que inclui o criativo/thumbnail). Assim o painel popula mesmo degradado.
+# BUG CORRIGIDO (10/08/2026): o Windsor IGNORA account_id como PARÂMETRO também no
+# connector facebook (mesmo comportamento já confirmado em GA4 e Instagram). O loop
+# antigo fazia 1 chamada POR CONTA e cada chamada devolvia TODAS as contas; como o
+# mapeamento é pelo CAMPO account_id, cada anúncio era somado len(SITE_FB) vezes
+# (10 contas → tabela "Anúncios ativos" com Conversões/Custo/Impressões ×10; razões
+# como Custo/Conv, CPC e ROAS não mudavam, por isso só os absolutos denunciaram).
+# REGRA GERAL WINDSOR: UMA chamada combinada com account_id no field list + filtro
+# no Python (mesmo padrão das campanhas acima, que sempre bateram certo).
+# Mantido o fallback de CAMPOS (os "exóticos" — vídeo 25%, engajamento de página —
+# já derrubaram a query com HTTP 500; se falhar, refaz só com o essencial, que
+# inclui o criativo/thumbnail). QA anti-duplicação no fim do bloco.
 _ad_full = ["date", "account_id", "campaign", "ad_id", "ad_name", "thumbnail_url", "spend",
             "impressions", "clicks", "reach", "actions_purchase", "action_values_purchase",
             "link_clicks", "video_p25_watched_actions_video_view", "actions_page_engagement"]
 _ad_core = ["date", "account_id", "campaign", "ad_id", "ad_name", "thumbnail_url", "spend",
             "impressions", "clicks", "reach", "actions_purchase", "action_values_purchase"]
-fb_ad = []
-_ad_fallbacks = 0
-for _acc in SITE_FB:
-    rows = windsor_safe("facebook", _ad_full, account_id=_acc, date_from=P5_AD_FROM, date_to=ENDS, retries=1)
-    if not rows:
-        rows = windsor_safe("facebook", _ad_core, account_id=_acc, date_from=P5_AD_FROM, date_to=ENDS, retries=2)
-        if rows: _ad_fallbacks += 1
-    fb_ad += rows
-print(f"  [P5][DBG] anúncios: {len(fb_ad)} linhas (fallback p/ campos essenciais em {_ad_fallbacks} conta(s))")
+_ad_mode = "completo"
+fb_ad = windsor_safe("facebook", _ad_full, date_from=P5_AD_FROM, date_to=ENDS, retries=2)
+if not fb_ad:
+    fb_ad = windsor_safe("facebook", _ad_core, date_from=P5_AD_FROM, date_to=ENDS, retries=2)
+    _ad_mode = "essencial (fallback)"
+print(f"  [P5][DBG] anúncios: {len(fb_ad)} linhas (1 chamada combinada, modo {_ad_mode})")
 # colunas anúncio: spend, imp, clicks, reach, purch, rev, linkclicks, video25, pageEng
 ads_meta = {s: {} for s in P5_SITES}
 for r in fb_ad:
@@ -397,6 +402,19 @@ for s in P5_SITES:
         lst.append({'id': aid, 'name': rec['ad_name'], 'campaign': rec['campaign'],
                     'thumb': rec['thumb'], 'rows': rows})
     ads[s] = lst
+
+# QA anti-duplicação: conversões dos ANÚNCIOS têm que bater com as das CAMPANHAS no
+# mesmo período (mesmo connector/campo, só o nível muda). Se anúncios >> campanhas
+# (~N×, N = nº de contas em SITE_FB), a duplicação por conta voltou.
+_i0_ad = idx.get(P5_AD_FROM, 0)
+_qa_ads = []
+for s in P5_SITES:
+    _pa = sum(v[4] for rec in ads_meta[s].values() for i, v in rec['agg'].items() if i >= _i0_ad)
+    _pc = sum(v[4] for rec in camp_meta[s].values() for i, v in rec['agg'].items() if i >= _i0_ad)
+    _qa_ads.append(f"{s}: anúncios={_pa:.0f} campanhas={_pc:.0f}")
+    if _pc > 0 and _pa > _pc * 1.5:
+        print(f"  [P5][AVISO] {s}: conversões nos ANÚNCIOS ({_pa:.0f}) >> CAMPANHAS ({_pc:.0f}) — duplicação por conta de volta?")
+print("  [QA] Conversões Meta últimos 60d (anúncios vs campanhas): " + " | ".join(_qa_ads))
 
 # ---------- INSTAGRAM (chamadas ÚNICAS p/ todas as contas, filtradas por account_id) ----------
 ig_foll = {s: {} for s in P5_SITES}; ig_reach = {s: {} for s in P5_SITES}; ig_new = {s: {} for s in P5_SITES}
