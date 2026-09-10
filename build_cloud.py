@@ -47,7 +47,9 @@ ENDS   = END.isoformat()
 # nunca na P1 — decisão do Rafael: parceiros não podem consolidar com sites próprios).
 SITE_FB={'383182840215364':'Moderna','990772362573645':'Moderna','175769079':'DePoster','867793234181618':'DePoster','1413252628867222':'Empório','958957112622663':'Empório',
          # parceiros (Meta Ads)
-         '324593358846160':'Mondessin','1154532475018030':'Coor','329992743452082':'Bruna Baldone','1008952206460036':_nfc('Estúdio Baru')}
+         # Mondessin tem 2 contas: 'MonDessin Anúncios' (324593358846160, sem gasto) e
+         # 'MonDessin 2022' (1079386639306144) — é nesta que o gasto real acontece (fix 10/09/2026).
+         '324593358846160':'Mondessin','1079386639306144':'Mondessin','1154532475018030':'Coor','329992743452082':'Bruna Baldone','1008952206460036':_nfc('Estúdio Baru')}
 # Google Ads: Windsor devolve o customer id com hífens (XXX-XXX-XXXX). Cadastro os dois
 # formatos (com e sem hífen) por segurança, pois não dá pra validar o formato exato sem a chave.
 SITE_GADS={'423-641-1454':'Moderna','402-184-9198':'DePoster','135-806-4700':'DePoster','543-984-2956':'Empório',
@@ -149,6 +151,18 @@ for r in fb:
 for r in gads:
     s=SITE_GADS.get(str(r.get('account_id')))
     if s and r.get('date'): cost[s][r['date']]+=brnum(r.get('cost'))
+# QA: contas de anúncio que o Windsor devolve COM gasto mas que não estão mapeadas em
+# SITE_FB/SITE_GADS (foi assim que o custo Meta da Mondessin ficou invisível até 10/09/2026:
+# o gasto estava numa 2ª conta que não constava no mapa).
+def _unmapped(rows, amount_key, site_map):
+    acc=defaultdict(float)
+    for r in rows:
+        a=str(r.get('account_id'))
+        if a not in site_map: acc[a]+=brnum(r.get(amount_key))
+    return {a:round(v,2) for a,v in acc.items() if v>0}
+for _lab,_rows,_k,_m in (("Meta",fb,"spend",SITE_FB),("Google",gads,"cost",SITE_GADS)):
+    _u=_unmapped(_rows,_k,_m)
+    if _u: print(f"  [QA][AVISO] contas {_lab} Ads COM gasto e NÃO mapeadas (custo invisível no BI): {_u}")
 for r in ga4:
     s=SITE_GA4.get(str(r.get('account_id')))
     if s and r.get('date'):
